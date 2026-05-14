@@ -40,8 +40,8 @@
     .toggle:hover { transform: scale(1.06); }
     .toggle.worst-not-found { border-color: #ef4444; animation: lg-pulse 1.8s infinite; }
     .toggle.worst-law-only  { border-color: #f59e0b; animation: lg-pulse 1.8s infinite; }
-    .toggle.worst-alias     { border-color: #3b82f6; }
-    .toggle.worst-verified  { border-color: #22c55e; }
+    .toggle.worst-alias     { border-color: #22c55e; }
+    .toggle.worst-verified  { border-color: #3b82f6; }
     @keyframes lg-pulse {
       0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
       70%  { box-shadow: 0 0 0 10px rgba(239,68,68,0); }
@@ -106,9 +106,9 @@
     }
     .summary .chip { display: flex; align-items: center; gap: 4px; }
     .summary .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .dot.verified { background: #22c55e; }
+    .dot.verified { background: #3b82f6; }
     .dot.law-only { background: #f59e0b; }
-    .dot.alias    { background: #3b82f6; }
+    .dot.alias    { background: #22c55e; }
     .dot.not-found{ background: #ef4444; }
 
     .cards {
@@ -153,9 +153,9 @@
       font-weight: 600;
       border: 1px solid;
     }
-    .badge.VERIFIED    { background: #14532d; color: #4ade80; border-color: #166534; }
+    .badge.VERIFIED    { background: #1e3a8a; color: #93c5fd; border-color: #1e40af; }
     .badge.LAW_ONLY    { background: #451a03; color: #fbbf24; border-color: #78350f; }
-    .badge.ALIAS_MATCH { background: #1e3a8a; color: #93c5fd; border-color: #1e40af; }
+    .badge.ALIAS_MATCH { background: #14532d; color: #4ade80; border-color: #166534; }
     .badge.NOT_FOUND   { background: #450a0a; color: #f87171; border-color: #7f1d1d; }
 
     .actions {
@@ -357,10 +357,10 @@
       const counts = { VERIFIED: 0, LAW_ONLY: 0, ALIAS_MATCH: 0, NOT_FOUND: 0 };
       for (const v of citations.values()) counts[v.status] = (counts[v.status] || 0) + 1;
       summary.innerHTML = `
-        <span class="chip"><span class="dot verified"></span>확인 ${counts.VERIFIED}</span>
-        <span class="chip"><span class="dot alias"></span>약칭 ${counts.ALIAS_MATCH}</span>
-        <span class="chip"><span class="dot law-only"></span>조문 미확인 ${counts.LAW_ONLY}</span>
         <span class="chip"><span class="dot not-found"></span>확인 불가 ${counts.NOT_FOUND}</span>
+        <span class="chip"><span class="dot law-only"></span>조문 미확인 ${counts.LAW_ONLY}</span>
+        <span class="chip"><span class="dot alias"></span>약칭 ${counts.ALIAS_MATCH}</span>
+        <span class="chip"><span class="dot verified"></span>확인 ${counts.VERIFIED}</span>
       `;
       const hasMissing = counts.LAW_ONLY > 0 || counts.NOT_FOUND > 0;
       copyBtn.disabled = !hasMissing;
@@ -411,17 +411,16 @@
         cards.innerHTML = `<div class="empty">아직 검출된 인용이 없습니다.<br/>LLM 답변이 출력되면 자동으로 확인합니다.</div>`;
       } else {
         let html = '';
-        // Order: 확인 → 약칭 → 조문 미확인 → 확인 불가.
-        // 안전한 것부터 위험한 것 방향으로 — 사용자가 결과를 위에서부터
-        // 읽어 내려가며 점점 강한 경고를 만나게 한다.
-        // ARTICLE_GAP / REPEALED 도 '확인 불가' 범주(빨강)에 묶어 마지막에.
+        // Order: 확인 불가 → 조문 미확인 → 약칭 → 확인.
+        // 가장 위험한 인용이 맨 위에 와서 사용자가 곧장 조치하도록.
+        // 확인 불가 그룹(빨강)은 NOT_FOUND → ARTICLE_GAP → REPEALED 순.
         const order = [
-          STATUS.VERIFIED,
-          STATUS.ALIAS_MATCH,
-          STATUS.LAW_ONLY,
           STATUS.NOT_FOUND,
           STATUS.ARTICLE_GAP,
           STATUS.REPEALED,
+          STATUS.LAW_ONLY,
+          STATUS.ALIAS_MATCH,
+          STATUS.VERIFIED,
         ];
         for (const status of order) {
           for (const [id, v] of citations.entries()) {
