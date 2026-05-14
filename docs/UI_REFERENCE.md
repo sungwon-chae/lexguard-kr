@@ -7,7 +7,7 @@ All colors must match exactly. Do not substitute.
 |--------------|------------|-------------------------|--------------------|
 | VERIFIED     | #22c55e    | rgba(34,197,94,0.12)    | —                  |
 | LAW_ONLY     | #f59e0b    | rgba(245,158,11,0.12)   | —                  |
-| ALIAS_MATCH  | #f59e0b    | rgba(245,158,11,0.12)   | —                  |
+| ALIAS_MATCH  | #3b82f6    | rgba(59,130,246,0.12)   | —                  |
 | NOT_FOUND    | #ef4444    | rgba(239,68,68,0.12)    | text-decoration: line-through |
 
 Underline style: border-bottom: 2px solid {color}
@@ -26,7 +26,7 @@ Slide-in: right: -380px → right: 0, transition 0.25s cubic-bezier(0.4,0,0.2,1)
 ## Status Badge Colors (inside sidebar card)
 VERIFIED:    background #14532d, color #4ade80, border #166534
 LAW_ONLY:    background #451a03, color #fbbf24, border #78350f
-ALIAS_MATCH: background #451a03, color #fbbf24, border #78350f
+ALIAS_MATCH: background #1e3a8a, color #93c5fd, border #1e40af
 NOT_FOUND:   background #450a0a, color #f87171, border #7f1d1d
 
 ## Toggle Button
@@ -35,9 +35,10 @@ Size: 44px × 44px, border-radius 50%
 Background: #1e293b
 Icon: ⚖ (U+2696)
 Border changes by worst status on page:
-  Any NOT_FOUND  → border: 2px solid #ef4444 + pulse animation
-  Any LAW_ONLY   → border: 2px solid #f59e0b + pulse animation
-  All VERIFIED   → border: 2px solid #22c55e
+  Any NOT_FOUND     → border: 2px solid #ef4444 + pulse animation
+  Any LAW_ONLY      → border: 2px solid #f59e0b + pulse animation
+  Any ALIAS_MATCH   → border: 2px solid #3b82f6 (no pulse)
+  All VERIFIED      → border: 2px solid #22c55e
 
 ## Tooltip Copy (exact strings)
 

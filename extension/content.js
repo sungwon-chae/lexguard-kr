@@ -50,7 +50,7 @@
   const HIGHLIGHT_STYLE = {
     VERIFIED:    'border-bottom: 2px solid #22c55e; background: rgba(34,197,94,0.12); padding: 0 1px; border-radius: 2px;',
     LAW_ONLY:    'border-bottom: 2px solid #f59e0b; background: rgba(245,158,11,0.12); padding: 0 1px; border-radius: 2px;',
-    ALIAS_MATCH: 'border-bottom: 2px solid #f59e0b; background: rgba(245,158,11,0.12); padding: 0 1px; border-radius: 2px;',
+    ALIAS_MATCH: 'border-bottom: 2px solid #3b82f6; background: rgba(59,130,246,0.12); padding: 0 1px; border-radius: 2px;',
     NOT_FOUND:   'border-bottom: 2px solid #ef4444; background: rgba(239,68,68,0.12); padding: 0 1px; border-radius: 2px; text-decoration: line-through; text-decoration-color: #ef4444;',
     REPEALED:    'border-bottom: 2px solid #ef4444; background: rgba(239,68,68,0.12); padding: 0 1px; border-radius: 2px; text-decoration: line-through; text-decoration-color: #ef4444;',
     ARTICLE_GAP: 'border-bottom: 2px solid #ef4444; background: rgba(239,68,68,0.12); padding: 0 1px; border-radius: 2px; text-decoration: line-through; text-decoration-color: #ef4444;'
@@ -90,7 +90,7 @@
     }
     .tooltip .dot.VERIFIED { background: #22c55e; }
     .tooltip .dot.LAW_ONLY { background: #f59e0b; }
-    .tooltip .dot.ALIAS_MATCH { background: #f59e0b; }
+    .tooltip .dot.ALIAS_MATCH { background: #3b82f6; }
     .tooltip .dot.NOT_FOUND { background: #ef4444; }
     .tooltip .dot.REPEALED { background: #ef4444; }
     .tooltip .dot.ARTICLE_GAP { background: #ef4444; }

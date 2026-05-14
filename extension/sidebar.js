@@ -40,6 +40,7 @@
     .toggle:hover { transform: scale(1.06); }
     .toggle.worst-not-found { border-color: #ef4444; animation: lg-pulse 1.8s infinite; }
     .toggle.worst-law-only  { border-color: #f59e0b; animation: lg-pulse 1.8s infinite; }
+    .toggle.worst-alias     { border-color: #3b82f6; }
     .toggle.worst-verified  { border-color: #22c55e; }
     @keyframes lg-pulse {
       0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
@@ -107,7 +108,7 @@
     .summary .dot { width: 8px; height: 8px; border-radius: 50%; }
     .dot.verified { background: #22c55e; }
     .dot.law-only { background: #f59e0b; }
-    .dot.alias    { background: #f59e0b; }
+    .dot.alias    { background: #3b82f6; }
     .dot.not-found{ background: #ef4444; }
 
     .cards {
@@ -154,7 +155,7 @@
     }
     .badge.VERIFIED    { background: #14532d; color: #4ade80; border-color: #166534; }
     .badge.LAW_ONLY    { background: #451a03; color: #fbbf24; border-color: #78350f; }
-    .badge.ALIAS_MATCH { background: #451a03; color: #fbbf24; border-color: #78350f; }
+    .badge.ALIAS_MATCH { background: #1e3a8a; color: #93c5fd; border-color: #1e40af; }
     .badge.NOT_FOUND   { background: #450a0a; color: #f87171; border-color: #7f1d1d; }
 
     .actions {
@@ -336,10 +337,11 @@
     }
 
     function refreshToggleAppearance() {
-      toggle.classList.remove('worst-not-found', 'worst-law-only', 'worst-verified');
+      toggle.classList.remove('worst-not-found', 'worst-law-only', 'worst-alias', 'worst-verified');
       const w = worstStatus();
       if (w === STATUS.NOT_FOUND) toggle.classList.add('worst-not-found');
-      else if (w === STATUS.LAW_ONLY || w === STATUS.ALIAS_MATCH) toggle.classList.add('worst-law-only');
+      else if (w === STATUS.LAW_ONLY) toggle.classList.add('worst-law-only');
+      else if (w === STATUS.ALIAS_MATCH) toggle.classList.add('worst-alias');
       else if (w === STATUS.VERIFIED) toggle.classList.add('worst-verified');
 
       const count = citations.size;
