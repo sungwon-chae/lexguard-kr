@@ -13,9 +13,10 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────
@@ -96,20 +97,195 @@ def build_source_url(law_name: str, existing: str) -> str:
     return "https://www.law.go.kr/법령/" + urllib.parse.quote(no_space, safe="")
 
 
+# Inline amendment markers in the article body, e.g.
+#   <개정 2014.3.24, 2020.2.4, 2023.3.14>
+#   <신설 2023.3.14>
+# Multiple dates per <개정> are comma-separated. Each date is YYYY.M.D.
+AMEND_TAG_RE = re.compile(r"<개정\s+([^>]+)>")
+NEW_TAG_RE = re.compile(r"<신설\s+([^>]+)>")
+DATE_RE = re.compile(r"(\d{4})\.(\d{1,2})\.(\d{1,2})")
+
+
+def normalize_date_token(token: str) -> str:
+    """'2023.3.14' → '2023-03-14'. Returns '' if unparseable."""
+    m = DATE_RE.search(token)
+    if not m:
+        return ""
+    y, mo, d = m.groups()
+    return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+
+
+def parse_article_amendments(article_body: str) -> dict:
+    """Pull all <개정 ...> / <신설 ...> dates from an article body slice.
+
+    Returns a dict containing only the fields that have content (saves bytes
+    in the final JSON since most articles have no markers at all):
+      last_amended   — most recent ISO date from any <개정> or <신설> marker
+      amendment_dates — all distinct ISO dates, sorted descending
+      is_new          — True iff any <신설> marker exists in the body
+      newly_added     — most recent ISO date from <신설> markers (if is_new)
+    """
+    dates_amend: set = set()
+    dates_new: set = set()
+    for m in AMEND_TAG_RE.finditer(article_body):
+        for token in m.group(1).split(","):
+            iso = normalize_date_token(token)
+            if iso:
+                dates_amend.add(iso)
+    for m in NEW_TAG_RE.finditer(article_body):
+        for token in m.group(1).split(","):
+            iso = normalize_date_token(token)
+            if iso:
+                dates_new.add(iso)
+
+    out: dict = {}
+    all_dates = sorted(dates_amend | dates_new, reverse=True)
+    if all_dates:
+        out["last_amended"] = all_dates[0]
+        # Cap amendment_dates length — five+ revisions per article exist but
+        # we only need the top few for UI signals.
+        out["amendment_dates"] = all_dates[:5]
+    if dates_new:
+        out["is_new"] = True
+        out["newly_added"] = max(dates_new)
+    return out
+
+
 def extract_articles(body: str) -> dict:
-    """Return dict { '15조': { 'title': '...', 'status': '현행' }, ... }
-    Primary regex captures (number, title); fallback captures number only."""
-    seen: dict = {}
+    """Return dict { '15조': { title, status, [amendment fields] }, ... }
+    Headings are matched in two forms (with title parens / without). The
+    body between consecutive headings is what we hand to parse_article_amendments."""
+    # Collect all heading positions in one pass with their parsed metadata.
+    heads = []
     for m in ARTICLE_HEADING_RE.finditer(body):
-        art_no, title = m.group(2), m.group(3).strip()
-        # First occurrence wins (avoids duplicate revision-marker headings).
-        if art_no not in seen:
-            seen[art_no] = {"title": title, "status": "현행"}
+        heads.append((m.start(), m.end(), m.group(2), m.group(3).strip()))
     for m in ARTICLE_HEADING_NO_TITLE_RE.finditer(body):
-        art_no = m.group(2)
-        if art_no not in seen:
-            seen[art_no] = {"title": "", "status": "현행"}
+        heads.append((m.start(), m.end(), m.group(2), ""))
+    heads.sort(key=lambda t: t[0])
+
+    seen: dict = {}
+    for i, (h_start, h_end, art_no, title) in enumerate(heads):
+        if art_no in seen:
+            continue  # first occurrence wins
+        next_start = heads[i + 1][0] if i + 1 < len(heads) else len(body)
+        article_body = body[h_end:next_start]
+        entry: dict = {"title": title, "status": "현행"}
+        entry.update(parse_article_amendments(article_body))
+        seen[art_no] = entry
     return seen
+
+
+# Commit-subject classification for per-law amendment timeline.
+# Examples from real Legalize KR history:
+#   "법률: 개인정보 보호법 (제정)"          → enacted
+#   "법률: 개인정보 보호법 (일부개정)"       → partial_amend
+#   "법률: 개인정보 보호법 (타법개정)"       → cross_amend
+#   "법률: 민법 (전부개정)"                → full_amend
+COMMIT_TYPE_KEYWORDS = (
+    ("(제정)", "enacted"),
+    ("(전부개정)", "full_amend"),
+    ("(일부개정)", "partial_amend"),
+    ("(타법개정)", "cross_amend"),
+)
+
+
+def classify_commit_subject(subject: str) -> str:
+    for kw, label in COMMIT_TYPE_KEYWORDS:
+        if kw in subject:
+            return label
+    return "other"
+
+
+def load_git_history(repo_root: Path) -> dict:
+    """One-shot `git log` on the entire repository, parsed in-memory into
+    `{ relative_md_path: [ {date, type, hash}, ... most-recent-first ] }`.
+
+    Avoids 5,700+ subprocess invocations. With --name-only every commit's
+    body is followed by its changed-files list (blank-line separated).
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                # core.quotepath=off keeps Korean filenames as raw UTF-8 in
+                # the output instead of octal-escaped — otherwise the path
+                # in `--name-only` lines never matches our legalize_path key.
+                "-c",
+                "core.quotepath=off",
+                "log",
+                "--pretty=format:COMMIT|%H|%ad|%s",
+                "--date=short",
+                "--name-only",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        print(f"  ! git log unavailable ({exc}); skipping per-law amendment history",
+              file=sys.stderr)
+        return {}
+
+    history: dict = {}
+    current = None
+    for line in proc.stdout.splitlines():
+        if line.startswith("COMMIT|"):
+            parts = line.split("|", 3)
+            if len(parts) < 4:
+                current = None
+                continue
+            current = {
+                "hash": parts[1],
+                "date": parts[2],
+                "type": classify_commit_subject(parts[3]),
+            }
+        elif not line.strip():
+            # Blank line separates one commit's data from the next.
+            current = None
+        elif current and line.endswith(".md"):
+            history.setdefault(line, []).append(current)
+    return history
+
+
+def derive_law_amendment_meta(commits: list, today: date) -> dict:
+    """Given a chronological-descending list of {date, type, hash} commits
+    for a single law file, derive the per-law fields.
+
+    Returns only fields that have content (so laws without git history
+    pay nothing in the final JSON)."""
+    if not commits:
+        return {}
+
+    out: dict = {
+        "amendment_count": len(commits),
+        "last_amended_date": commits[0]["date"],
+        "amendment_timeline": [
+            {"date": c["date"], "type": c["type"]} for c in commits
+        ],
+    }
+    # enacted_date: prefer the explicit (제정) commit; otherwise the earliest
+    # commit we see (Legalize KR sometimes onboards a law mid-history).
+    enacted_commit = next((c for c in commits if c["type"] == "enacted"), None)
+    if enacted_commit:
+        out["enacted_date"] = enacted_commit["date"]
+    else:
+        out["enacted_date"] = commits[-1]["date"]
+
+    # high_amendment_frequency: ≥3 amendments in the last 5 years.
+    cutoff_year = today.year - 5
+    recent = 0
+    for c in commits:
+        try:
+            y = int(c["date"].split("-", 1)[0])
+        except (ValueError, IndexError):
+            continue
+        if y >= cutoff_year and c["type"] != "enacted":
+            recent += 1
+    out["high_amendment_frequency"] = recent >= 3
+    return out
 
 
 def compute_max_article_no(articles: dict) -> int:
@@ -130,6 +306,13 @@ def build_index(source_root: Path) -> dict:
     law_count = 0
     article_count = 0
     skipped = 0
+
+    # Single git log call up-front; reused for every law.
+    repo_root = source_root.parent
+    git_history = load_git_history(repo_root)
+    today = date.today()
+    if git_history:
+        print(f"  git history: {len(git_history):,} files with commit log")
 
     md_files = sorted(source_root.rglob("*.md"))
     for path in md_files:
@@ -170,8 +353,11 @@ def build_index(source_root: Path) -> dict:
             "source_url": source_url,
             "legalize_path": legalize_path,
             "max_article_no": max_article_no,
-            "articles": articles,
         }
+        # Per-law amendment history derived from git log. Fields are only
+        # written when commit data exists.
+        entry.update(derive_law_amendment_meta(git_history.get(legalize_path, []), today))
+        entry["articles"] = articles
 
         # Primary normalized key (whitespace collapsed).
         primary_key = re.sub(r"\s+", " ", law_name).strip()

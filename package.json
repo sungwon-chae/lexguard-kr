@@ -1,10 +1,10 @@
 {
   "name": "lexguard-kr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Chrome extension that verifies Korean statutory citations against a local index, blocking LLM hallucinations.",
   "scripts": {
-    "test": "node scripts/parser_smoke.js && node scripts/nospace_smoke.js && node scripts/prefix_smoke.js && node scripts/dom_smoke.js"
+    "test": "node scripts/parser_smoke.js && node scripts/nospace_smoke.js && node scripts/prefix_smoke.js && node scripts/dom_smoke.js && node scripts/amendment_smoke.js"
   },
   "devDependencies": {
     "jsdom": "^29.0.0"

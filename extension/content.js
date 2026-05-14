@@ -132,6 +132,41 @@
       : '';
   }
 
+  // v0.1.1 — amendment-history signals.
+  // A law gets the "frequent amendment" warning when (a) the build-time
+  // flag high_amendment_frequency is set OR (b) amendment_count ≥ 5
+  // OR (c) last_amended_date is within the last 2 years. Any of the three
+  // is enough — they cover different shapes of "this might have shifted".
+  const RECENT_AMEND_MS = 2 * 365 * 24 * 60 * 60 * 1000; // ~2 years
+  function isLawFrequentlyAmended(lawEntry) {
+    if (!lawEntry) return false;
+    if (lawEntry.high_amendment_frequency) return true;
+    if (typeof lawEntry.amendment_count === 'number' && lawEntry.amendment_count >= 5) return true;
+    const lad = lawEntry.last_amended_date;
+    if (!lad) return false;
+    const t = Date.parse(lad);
+    if (Number.isNaN(t)) return false;
+    return (Date.now() - t) < RECENT_AMEND_MS;
+  }
+
+  function amendmentNotes(v) {
+    if (!v.lawEntry) return '';
+    const parts = [];
+    if (isLawFrequentlyAmended(v.lawEntry)) {
+      const last = v.lawEntry.last_amended_date ? escapeHtml(v.lawEntry.last_amended_date) : '';
+      parts.push(
+        `<div class="note">※ 자주 개정되는 법령${last ? ` (최근 개정: ${last})` : ''}` +
+        `\n　조문 위치가 변경됐을 수 있으니 원문 확인 권장</div>`
+      );
+    }
+    if (v.articleEntry && v.articleEntry.is_new && v.articleEntry.newly_added) {
+      parts.push(
+        `<div class="note">※ ${escapeHtml(v.articleEntry.newly_added)}에 신설된 비교적 새 조문입니다</div>`
+      );
+    }
+    return parts.join('');
+  }
+
   function tooltipHtmlFor(v) {
     const dot = `<span class="dot ${v.status}"></span>`;
     const pn = partialNote(v);
@@ -139,12 +174,14 @@
       const title = v.articleEntry && v.articleEntry.title ? escapeHtml(v.articleEntry.title) : '';
       const lawType = v.lawEntry && v.lawEntry.law_type ? escapeHtml(v.lawEntry.law_type) : '';
       const eff = v.lawEntry && v.lawEntry.effective_date ? escapeHtml(v.lawEntry.effective_date) : '';
+      const an = amendmentNotes(v);
       return `
         <div class="title">${dot}현행 법령에서 조문 확인</div>
         ${title ? `<div class="row">조문명: ${title}</div>` : ''}
         ${lawType ? `<div class="row">법령종류: ${lawType}</div>` : ''}
         ${eff ? `<div class="row">시행: ${eff}</div>` : ''}
         <div class="note">※ 조문 내용의 해석·법적 타당성은 검증하지 않습니다</div>
+        ${an}
         ${pn}
       `;
     }

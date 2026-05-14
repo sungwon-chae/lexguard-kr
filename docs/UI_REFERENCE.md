@@ -49,6 +49,14 @@ Border changes by worst status on page:
 시행: {effective_date}
 ※ 조문 내용의 해석·법적 타당성은 검증하지 않습니다
 
+Conditional extra lines (v0.1.1+):
+- If law is "frequently amended" (high_amendment_frequency OR
+  amendment_count ≥ 5 OR last_amended within 2 years):
+    ※ 자주 개정되는 법령 (최근 개정: {last_amended_date})
+    　조문 위치가 변경됐을 수 있으니 원문 확인 권장
+- If article entry has is_new=true and newly_added date:
+    ※ {newly_added}에 신설된 비교적 새 조문입니다
+
 ### LAW_ONLY
 상태: 법령 확인 / 조문({article_no}) 미확인
 법령명: {law_name}
