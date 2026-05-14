@@ -358,8 +358,8 @@
       for (const v of citations.values()) counts[v.status] = (counts[v.status] || 0) + 1;
       summary.innerHTML = `
         <span class="chip"><span class="dot verified"></span>확인 ${counts.VERIFIED}</span>
-        <span class="chip"><span class="dot law-only"></span>조문 미확인 ${counts.LAW_ONLY}</span>
         <span class="chip"><span class="dot alias"></span>약칭 ${counts.ALIAS_MATCH}</span>
+        <span class="chip"><span class="dot law-only"></span>조문 미확인 ${counts.LAW_ONLY}</span>
         <span class="chip"><span class="dot not-found"></span>확인 불가 ${counts.NOT_FOUND}</span>
       `;
       const hasMissing = counts.LAW_ONLY > 0 || counts.NOT_FOUND > 0;
@@ -411,8 +411,18 @@
         cards.innerHTML = `<div class="empty">아직 검출된 인용이 없습니다.<br/>LLM 답변이 출력되면 자동으로 확인합니다.</div>`;
       } else {
         let html = '';
-        // Order: NOT_FOUND first (most urgent), then LAW_ONLY, ALIAS_MATCH, VERIFIED.
-        const order = [STATUS.NOT_FOUND, STATUS.LAW_ONLY, STATUS.ALIAS_MATCH, STATUS.VERIFIED];
+        // Order: 확인 → 약칭 → 조문 미확인 → 확인 불가.
+        // 안전한 것부터 위험한 것 방향으로 — 사용자가 결과를 위에서부터
+        // 읽어 내려가며 점점 강한 경고를 만나게 한다.
+        // ARTICLE_GAP / REPEALED 도 '확인 불가' 범주(빨강)에 묶어 마지막에.
+        const order = [
+          STATUS.VERIFIED,
+          STATUS.ALIAS_MATCH,
+          STATUS.LAW_ONLY,
+          STATUS.NOT_FOUND,
+          STATUS.ARTICLE_GAP,
+          STATUS.REPEALED,
+        ];
         for (const status of order) {
           for (const [id, v] of citations.entries()) {
             if (v.status === status) html += renderCard(id, v);
