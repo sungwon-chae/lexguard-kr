@@ -1,0 +1,27 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Build / data
+# - extension/data/law-index.json IS committed (extension needs it at runtime)
+# - data/legalize-kr/ is the raw Legalize KR clone used by build_index.py;
+#   it's hundreds of MB and is reproducible from upstream
+data/legalize-kr/
+extension/data/law-index.json.br
+
+# OS / editor
+.DS_Store
+*.log
+.vscode/
+.idea/
+*.swp
+*.swo
+.~lock.*
+
+# Python
+__pycache__/
+*.pyc
+
+# Scratch
+*.tmp
+*.bak

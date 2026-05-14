@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "LexGuard KR",
+  "version": "0.1.0",
+  "description": "한국 법령·조문 인용 존재 여부를 로컬에서 검증합니다. LLM 환각 차단용 1차 확인 도구.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://claude.ai/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
+      ],
+      "js": ["parser.js", "verifier.js", "sidebar.js", "content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["data/law-index.json"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "LexGuard KR",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

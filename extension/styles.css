@@ -1,0 +1,40 @@
+/* styles.css
+ *
+ * NOTE: Heavy UI (sidebar, tooltip) lives in Shadow DOM (sidebar.js, content.js
+ * inline CSS strings). This file is a thin fallback for environments where
+ * inline highlight styles get stripped by host CSS. content.js applies all
+ * highlight styles inline via setAttribute('style', ...) so this file is
+ * informational/optional.
+ */
+
+.lexguard-mark {
+  cursor: pointer;
+}
+
+.lexguard-mark[data-lexguard-status="VERIFIED"] {
+  border-bottom: 2px solid #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+}
+.lexguard-mark[data-lexguard-status="LAW_ONLY"] {
+  border-bottom: 2px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+}
+.lexguard-mark[data-lexguard-status="ALIAS_MATCH"] {
+  border-bottom: 2px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+}
+.lexguard-mark[data-lexguard-status="NOT_FOUND"],
+.lexguard-mark[data-lexguard-status="REPEALED"],
+.lexguard-mark[data-lexguard-status="ARTICLE_GAP"] {
+  border-bottom: 2px solid #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+}
+
+.lexguard-repealed {
+  border-bottom: 2px solid #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+}

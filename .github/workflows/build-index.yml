@@ -1,0 +1,61 @@
+name: Build LexGuard Index
+
+on:
+  schedule:
+    # Daily at 18:00 UTC (03:00 KST next day).
+    - cron: '0 18 * * *'
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build_index.py'
+      - '.github/workflows/build-index.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install brotli
+        run: pip install brotli
+
+      - name: Sparse clone Legalize KR (kr/ only)
+        run: |
+          mkdir -p data
+          cd data
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/legalize-kr/legalize-kr.git
+          cd legalize-kr
+          git sparse-checkout set kr
+
+      - name: Build index
+        run: |
+          python scripts/build_index.py \
+            --source data/legalize-kr/kr \
+            --out extension/data
+
+      - name: Show output stats
+        run: |
+          ls -lh extension/data/ || true
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain extension/data/)" ]; then
+            git add extension/data/
+            git commit -m "chore(index): rebuild law-index ($(date -u +%Y-%m-%d))"
+            git push
+          else
+            echo "No index changes."
+          fi
