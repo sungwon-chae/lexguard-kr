@@ -58,15 +58,6 @@ npm test    # parser / verifier / DOM smoke 56/56
 
 ---
 
-## 보조 도구 위치 / Where this fits
-
-- **법령/조문 존재 여부 검증** → 이 도구
-- **사건번호(판례) 존재 여부 검증** → [법고개](https://github.com/legalize-kr) (별도 확장 예정)
-
-서로 보완 관계입니다. LexGuard는 법령만, 법고개는 판례만 봅니다.
-
----
-
 ## 면책 / Disclaimer
 
 - 본 확장은 **법령 인용의 존재 여부만** 확인합니다. 변호사·법무사 등 자격 있는 전문가의 자문을 대체하지 않습니다.
