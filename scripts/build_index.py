@@ -22,6 +22,30 @@ from pathlib import Path
 # ── Configuration ──────────────────────────────────────────────────────────
 SKIP_FILENAMES = {"README.md", "CHANGELOG.md", "INDEX.md", "index.md"}
 
+# Single-shard byte ceiling. GitHub's soft limit is 50MB — keep ~1MB headroom
+# so a small data growth doesn't suddenly fail the build. If a shard ever hits
+# this, either trim a field or split further; do not raise blindly.
+MAX_SHARD_BYTES = 49_000_000
+
+# Fields that v0.1.1 added to each law entry, derived from git log history.
+# These move to the amendments sidecar (see split_amendments).
+AMENDMENT_LAW_FIELDS = (
+    "amendment_count",
+    "last_amended_date",
+    "amendment_timeline",
+    "enacted_date",
+    "high_amendment_frequency",
+)
+
+# Fields that v0.1.1 added to each article entry, parsed from inline <개정>/<신설>
+# markers. Also moved to the amendments sidecar.
+AMENDMENT_ARTICLE_FIELDS = (
+    "last_amended",
+    "amendment_dates",
+    "is_new",
+    "newly_added",
+)
+
 FRONT_MATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 ARTICLE_HEADING_RE = re.compile(
@@ -379,22 +403,86 @@ def build_index(source_root: Path) -> dict:
             "source": "Legalize KR (github.com/legalize-kr/legalize-kr)",
             "law_count": law_count,
             "article_count": article_count,
-            "version": "0.1.0",
+            "version": "0.1.2",
             "skipped_files": skipped,
         },
         "laws": laws,
     }
 
 
-def write_outputs(index: dict, out_dir: Path) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    plain_path = out_dir / "law-index.json"
-    plain_bytes = json.dumps(index, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+def split_amendments(index: dict) -> tuple:
+    """Move v0.1.1 amendment fields out of the core index into a sidecar dict.
+
+    Returns (core_index, amendments_index). The core keeps everything the
+    extension needs for citation verification; the sidecar carries only the
+    history signals consumed by tooltip notes. verifier.js merges them back at
+    load time keyed by primary_key derived from entry.law_name.
+
+    Sidecar entries are keyed by primary_key only (not no-space aliases) —
+    JSON serialization splits the shared Python dict ref into independent
+    objects per key, but both still carry the same `law_name`, so the JS
+    merge derives the same primary_key for both and applies amendments to
+    each parsed copy. Saves ~50% of sidecar bytes vs mirroring all keys.
+    """
+    laws = index.get("laws", {})
+    sidecar_laws: dict = {}
+    seen_primary: set = set()
+
+    for entry in laws.values():
+        primary_key = re.sub(r"\s+", " ", entry.get("law_name", "")).strip()
+        if not primary_key or primary_key in seen_primary:
+            continue
+        seen_primary.add(primary_key)
+
+        law_block: dict = {}
+        for field in AMENDMENT_LAW_FIELDS:
+            if field in entry:
+                law_block[field] = entry[field]
+
+        article_blocks: dict = {}
+        for art_no, art_entry in (entry.get("articles") or {}).items():
+            art_block = {
+                f: art_entry[f] for f in AMENDMENT_ARTICLE_FIELDS if f in art_entry
+            }
+            if art_block:
+                article_blocks[art_no] = art_block
+
+        if article_blocks:
+            law_block["articles"] = article_blocks
+        if law_block:
+            sidecar_laws[primary_key] = law_block
+
+    # Mutate the core in place to strip the moved fields — cheaper than a deep
+    # copy at this size, and the original `index` object isn't reused.
+    for entry in laws.values():
+        for field in AMENDMENT_LAW_FIELDS:
+            entry.pop(field, None)
+        for art_entry in (entry.get("articles") or {}).values():
+            for field in AMENDMENT_ARTICLE_FIELDS:
+                art_entry.pop(field, None)
+
+    amendments_index = {
+        "meta": {
+            "built_at": index.get("meta", {}).get("built_at", ""),
+            "version": index.get("meta", {}).get("version", ""),
+            "sidecar_of": "law-index.json",
+            "law_count": len(sidecar_laws),
+        },
+        "laws": sidecar_laws,
+    }
+    return index, amendments_index
+
+
+def _write_shard(out_dir: Path, name: str, payload: dict) -> int:
+    """Write `payload` as `<name>.json` plus a `.br` companion (brotli if
+    installed, plain copy otherwise — see KNOWN_ISSUES.md #8). Returns the
+    plain byte size for the caller's size-guard check."""
+    plain_path = out_dir / f"{name}.json"
+    plain_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     plain_path.write_bytes(plain_bytes)
     print(f"  wrote {plain_path}  ({len(plain_bytes):,} bytes)")
 
-    # Try brotli compression — fallback to plain copy if not installed.
-    br_path = out_dir / "law-index.json.br"
+    br_path = out_dir / f"{name}.json.br"
     try:
         import brotli  # type: ignore
 
@@ -403,10 +491,27 @@ def write_outputs(index: dict, out_dir: Path) -> None:
         ratio = (1.0 - len(br_bytes) / len(plain_bytes)) * 100 if plain_bytes else 0
         print(f"  wrote {br_path}  ({len(br_bytes):,} bytes, -{ratio:.1f}%)")
     except ImportError:
-        # Per KNOWN_ISSUES.md #8 option C: ship plain JSON under .br name as
-        # fallback so downstream tooling doesn't break.
         br_path.write_bytes(plain_bytes)
         print(f"  brotli not installed — wrote {br_path} as plain copy")
+    return len(plain_bytes)
+
+
+def write_outputs(index: dict, out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    core, amendments = split_amendments(index)
+
+    core_size = _write_shard(out_dir, "law-index", core)
+    amend_size = _write_shard(out_dir, "law-amendments", amendments)
+
+    # Hard guard so a future field addition that pushes a shard past GitHub's
+    # soft limit fails the build immediately instead of silently shipping a
+    # too-large bundled file. If hit, trim a field or shard further — don't
+    # just bump MAX_SHARD_BYTES.
+    for name, size in (("law-index.json", core_size), ("law-amendments.json", amend_size)):
+        if size > MAX_SHARD_BYTES:
+            raise SystemExit(
+                f"error: {name} is {size:,} bytes, exceeds MAX_SHARD_BYTES={MAX_SHARD_BYTES:,}"
+            )
 
 
 def main() -> int:

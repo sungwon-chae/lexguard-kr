@@ -3,11 +3,14 @@ node_modules/
 npm-debug.log*
 
 # Build / data
-# - extension/data/law-index.json IS committed (extension needs it at runtime)
+# - extension/data/law-index.json + law-amendments.json ARE committed
+#   (extension fetches both at runtime; see verifier.js loadIndex)
+# - .br companions are not used at runtime (KNOWN_ISSUES.md #8) — skip them
 # - data/legalize-kr/ is the raw Legalize KR clone used by build_index.py;
 #   it's hundreds of MB and is reproducible from upstream
 data/legalize-kr/
 extension/data/law-index.json.br
+extension/data/law-amendments.json.br
 
 # OS / editor
 .DS_Store

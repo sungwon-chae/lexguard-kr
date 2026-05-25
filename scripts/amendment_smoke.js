@@ -9,7 +9,34 @@ const path = require('path');
 const vm = require('vm');
 
 const EXT = path.resolve(__dirname, '..', 'extension');
+
+// v0.1.2 split: read both shards and merge in the same shape verifier.js
+// constructs at runtime, so the assertions below exercise the merge logic too.
+const AMENDMENT_LAW_FIELDS = [
+  'amendment_count', 'last_amended_date', 'amendment_timeline',
+  'enacted_date', 'high_amendment_frequency',
+];
 const indexJson = JSON.parse(fs.readFileSync(path.join(EXT, 'data', 'law-index.json'), 'utf8'));
+const amendmentsJson = JSON.parse(fs.readFileSync(path.join(EXT, 'data', 'law-amendments.json'), 'utf8'));
+(function mergeAmendments(core, amendments) {
+  if (!core || !core.laws || !amendments || !amendments.laws) return;
+  for (const key of Object.keys(core.laws)) {
+    const entry = core.laws[key];
+    if (!entry || !entry.law_name) continue;
+    const primaryKey = entry.law_name.replace(/\s+/g, ' ').trim();
+    const block = amendments.laws[primaryKey];
+    if (!block) continue;
+    for (const f of AMENDMENT_LAW_FIELDS) {
+      if (block[f] !== undefined) entry[f] = block[f];
+    }
+    if (block.articles && entry.articles) {
+      for (const artNo of Object.keys(block.articles)) {
+        const coreArt = entry.articles[artNo];
+        if (coreArt) Object.assign(coreArt, block.articles[artNo]);
+      }
+    }
+  }
+})(indexJson, amendmentsJson);
 
 function field(law, key) {
   const e = indexJson.laws[law] || indexJson.laws[law.replace(/\s+/g, '')];
@@ -37,6 +64,21 @@ const indexChecks = [
     for (const law of laws.slice(0, 100)) {
       for (const a of Object.values(law.articles || {})) {
         if (a.last_amended) return true;
+      }
+    }
+    return false;
+  }],
+  ['merge preserves core+amendment on same article object', () => {
+    // After merge, an article must carry both its core field (title from
+    // law-index.json) and its amendment field (last_amended from sidecar)
+    // on the same object — guards against the merge accidentally clobbering
+    // or shadowing core fields.
+    const laws = Object.values(indexJson.laws);
+    for (const law of laws) {
+      for (const a of Object.values(law.articles || {})) {
+        if (typeof a.title === 'string' && typeof a.last_amended === 'string') {
+          return true;
+        }
       }
     }
     return false;

@@ -1,7 +1,12 @@
-// verifier.js — loads law-index.json, performs local lookup, returns STATUS enum.
+// verifier.js — loads law-index.json + law-amendments.json sidecar, merges
+// them in memory, performs local lookup, returns STATUS enum.
 // Per /docs/KNOWN_ISSUES.md #8: ship plain JSON (no brotli decode in browser).
 // Per /docs/DATA_SCHEMA.md: lookup priority is
 //   1) exact normalized match, 2) no-space variant, 3) partial contains.
+//
+// v0.1.2 split: amendment fields live in a sidecar to keep each shard well
+// under GitHub's 50MB soft limit. The merge restores the v0.1.1 object shape
+// so downstream consumers (content.js tooltips, popup.js status) see no diff.
 
 (function (global) {
   'use strict';
@@ -23,33 +28,86 @@
   const ARTICLE_GAP_MULT = 1.5;
   const ARTICLE_GAP_ADD = 30;
 
+  // Mirrors AMENDMENT_LAW_FIELDS in scripts/build_index.py. Kept explicit
+  // rather than spread-merging the whole block so a future sidecar typo
+  // can't accidentally clobber core fields like `law_name` or `articles`.
+  const AMENDMENT_LAW_FIELDS = [
+    'amendment_count',
+    'last_amended_date',
+    'amendment_timeline',
+    'enacted_date',
+    'high_amendment_frequency'
+  ];
+
   function extractArticleNumber(articleNoStr) {
     if (!articleNoStr) return 0;
     const m = /^(\d+)/.exec(String(articleNoStr));
     return m ? parseInt(m[1], 10) : 0;
   }
 
-  let _index = null;          // resolved index object
+  let _index = null;          // resolved index object (core + merged sidecar)
   let _indexPromise = null;   // in-flight load
   let _indexError = null;     // last load error (for popup status)
 
-  function indexUrl() {
+  function coreUrl() {
     return chrome.runtime.getURL('data/law-index.json');
+  }
+  function amendmentsUrl() {
+    return chrome.runtime.getURL('data/law-amendments.json');
+  }
+
+  function fetchJson(url) {
+    return fetch(url).then((r) => {
+      if (!r.ok) throw new Error('fetch failed (' + r.status + '): ' + url);
+      return r.json();
+    });
+  }
+
+  /**
+   * Apply amendment-sidecar fields back onto the core index in place.
+   * Keyed by primary_key derived from entry.law_name, mirroring
+   * scripts/build_index.py. Idempotent — safe to call twice on the same object.
+   */
+  function mergeAmendments(core, amendments) {
+    if (!core || !core.laws || !amendments || !amendments.laws) return;
+    const sidecarLaws = amendments.laws;
+    for (const key of Object.keys(core.laws)) {
+      const entry = core.laws[key];
+      if (!entry || !entry.law_name) continue;
+      const primaryKey = entry.law_name.replace(/\s+/g, ' ').trim();
+      const block = sidecarLaws[primaryKey];
+      if (!block) continue;
+      for (const field of AMENDMENT_LAW_FIELDS) {
+        if (block[field] !== undefined) entry[field] = block[field];
+      }
+      if (block.articles && entry.articles) {
+        for (const artNo of Object.keys(block.articles)) {
+          const coreArt = entry.articles[artNo];
+          if (coreArt) Object.assign(coreArt, block.articles[artNo]);
+        }
+      }
+    }
   }
 
   /**
    * Load the index once, cache for the lifetime of the content script.
+   * Core fetch is required; amendments are optional — a missing sidecar
+   * just suppresses the tooltip amendment notes (every reader null-checks).
    */
   function loadIndex() {
     if (_index) return Promise.resolve(_index);
     if (_indexPromise) return _indexPromise;
-    _indexPromise = fetch(indexUrl())
-      .then((r) => {
-        if (!r.ok) throw new Error('index fetch failed: ' + r.status);
-        return r.json();
-      })
-      .then((json) => {
-        _index = json;
+    _indexPromise = Promise.allSettled([fetchJson(coreUrl()), fetchJson(amendmentsUrl())])
+      .then(([coreRes, amendRes]) => {
+        if (coreRes.status === 'rejected') throw coreRes.reason;
+        const core = coreRes.value;
+        if (amendRes.status === 'fulfilled') {
+          mergeAmendments(core, amendRes.value);
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn('[LexGuard] amendments sidecar unavailable, continuing without:', amendRes.reason);
+        }
+        _index = core;
         return _index;
       })
       .catch((err) => {
